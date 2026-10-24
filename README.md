@@ -78,7 +78,17 @@ cargo test --release
 | `src/video.rs` | koder AV1 i zapis WebM |
 | `src/vec3.rs` | wektory 3D |
 
-## Licencje zewnętrzne
+## Autorstwo
+
+Cały kod tego programu napisał model AI Claude (Anthropic) w narzędziu Claude Code,
+na podstawie poleceń (promptów) Adama Łacnego, który określał funkcje programu
+i kierował jego rozwojem.
+
+## Licencja
+
+Program jest udostępniony na licencji MIT — pełny tekst w pliku [`LICENSE`](LICENSE).
+
+### Licencje zewnętrzne
 
 `assets/symbole.ttf` to podzbiór czcionki DejaVu Sans (symbole astronomiczne ☉ ⊕ ♃ …),
 na licencji Bitstream Vera — pełny tekst w `assets/LICENSE-DejaVu.txt`.
