@@ -32,6 +32,26 @@ Animacja 3D układu planetarnego z symulacją grawitacji N ciał, napisana w Rus
 | Śledzenie ciała | kliknij planetę lub gwiazdę |
 | Pauza / wznowienie | spacja |
 
+## Jednostki
+
+| Wielkość | Jednostka | Symbol |
+|---|---|---|
+| Masa gwiazdy centralnej | masy Słońca | M☉ |
+| Masa planety | masy Ziemi | M⊕ |
+| Masa dysku gazowego (całkowita) | masy Ziemi | M⊕ |
+| Odległości, półosie orbit, promienie dysku | jednostki astronomiczne | AU |
+| Czas, odstęp zapisu elementów orbitalnych | lata | — |
+| Kąty (i, Ω, ω, ν, grubość dysku) | stopnie | ° |
+
+- 1 M⊕ = 3,003489·10⁻⁶ M☉ (Słońce jest ok. 333 000 razy cięższe od Ziemi),
+  1 M♃ (masa Jowisza) = 317,83 M⊕.
+- Po najechaniu myszą na „M⊕” przy planecie widać jej masę w masach Jowisza (M♃) i Słońca (M☉).
+- Masa gazu to masa **całego** dysku, dzielona po równo między cząsteczki — np. 10 M⊕
+  na 300 cząsteczek daje ok. 0,033 M⊕ na cząsteczkę. Zmiana liczby cząsteczek nie zmienia
+  więc całkowitego wpływu gazu na planety.
+- Wewnętrznie program liczy masy w M☉; w jednostkach AU, lata i M☉ stała grawitacji
+  wynosi G = 4π².
+
 ## Budowanie
 
 Potrzebny jest [Rust](https://rustup.rs/) w wersji 1.95 lub nowszej (wymaganie biblioteki eframe 0.37).
