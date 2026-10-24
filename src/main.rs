@@ -43,3 +43,11 @@ fn add_symbol_font(ctx: &eframe::egui::Context) {
     }
     ctx.set_fonts(fonts);
 }
+
+/// `atan2f` z bieżącej glibc ma wersję GLIBC_2.43, przez co program nie uruchomiłby się na starszych
+/// dystrybucjach. Własna definicja przez `atan2` z f64 (dostępne od zawsze) usuwa to wymaganie.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[unsafe(no_mangle)]
+extern "C" fn atan2f(y: f32, x: f32) -> f32 {
+    (y as f64).atan2(x as f64) as f32
+}
