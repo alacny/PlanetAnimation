@@ -676,19 +676,27 @@ impl PlanetApp {
 
     fn info(&self, ui: &mut egui::Ui) {
         ui.label(RichText::new("Stan").strong());
-        egui::Grid::new("info").num_columns(3).striped(true).show(ui, |ui| {
+        egui::Grid::new("info").num_columns(6).striped(true).show(ui, |ui| {
             ui.label("ciało");
-            ui.label("r [AU]");
-            ui.label("v [km/s]");
+            ui.label("r [AU]").on_hover_text("Odległość od gwiazdy");
+            ui.label("v [km/s]").on_hover_text("Prędkość względem gwiazdy");
+            ui.label("a [AU]").on_hover_text("Wielka półoś orbity (ujemna dla orbity otwartej)");
+            ui.label("e").on_hover_text("Mimośród orbity");
+            ui.label("i [°]").on_hover_text("Nachylenie (inklinacja) orbity");
             ui.end_row();
             for i in 1..self.sim.bodies.len() {
                 let (r, v) = self.sim.relative_to_star(i);
+                let el = self.sim.orbital_elements(i);
                 ui.label(self.body_name(i));
                 ui.label(format!("{r:.3}"));
                 ui.label(format!("{:.2}", v * AU_PER_YEAR_IN_KMS));
+                ui.label(format!("{:.3}", el.a));
+                ui.label(format!("{:.4}", el.e));
+                ui.label(format!("{:.2}", el.inclination));
                 ui.end_row();
             }
         });
+        ui.label(RichText::new("a, e, i — oskulacyjne elementy orbity względem gwiazdy").small().weak());
         ui.label(
             RichText::new(format!("Błąd energii: {:.2e}", self.sim.energy_drift()))
                 .small()

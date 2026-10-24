@@ -2032,6 +2032,7 @@ name = "planet_animation"
 version = "0.1.2"
 dependencies = [
  "eframe",
+ "egui",
  "rav1e",
  "rayon",
 ]
