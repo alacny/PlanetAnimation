@@ -78,6 +78,10 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 Wynik: `target/x86_64-pc-windows-gnu/release/planet_animation.exe`.
 
+Na Windowsie program rysuje przez **wgpu** (DirectX 12 lub Vulkan), więc działa także bez
+sterownika karty graficznej, np. w maszynie wirtualnej (programowy renderer WARP).
+Jeśli wgpu nie wystartuje, program sam przełącza się na OpenGL. Na Linuksie rysuje przez OpenGL.
+
 ## Testy
 
 ```sh

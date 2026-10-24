@@ -1,10 +1,19 @@
 [package]
 name = "planet_animation"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "MIT"
 
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = ["wayland", "x11", "glow", "default_fonts"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts"] }
 rav1e = { version = "0.8.1", default-features = false, features = ["threading"] }
 rayon = "1.12.0"
+
+# Linux: rysowanie przez OpenGL, okno w sesji Wayland lub X11.
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["wayland", "x11", "glow"] }
+
+# Windows: rysowanie przez wgpu (DirectX 12 lub Vulkan) — działa też bez sterownika karty graficznej,
+# np. w maszynie wirtualnej, dzięki programowemu rendererowi WARP z Windows. OpenGL jako zapas.
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "glow"] }

@@ -14,7 +14,20 @@ mod vec3;
 mod video;
 
 fn main() -> eframe::Result {
+    // Windows: wgpu działa też bez sterownika karty graficznej (np. w maszynie wirtualnej przez WARP);
+    // gdyby jednak nie wystartowało, zostaje jeszcze OpenGL.
+    #[cfg(windows)]
+    match run(eframe::Renderer::Wgpu) {
+        Err(eframe::Error::Wgpu(_)) => run(eframe::Renderer::Glow),
+        result => result,
+    }
+    #[cfg(not(windows))]
+    run(eframe::Renderer::Glow)
+}
+
+fn run(renderer: eframe::Renderer) -> eframe::Result {
     let options = eframe::NativeOptions {
+        renderer,
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Układ planetarny 3D")
             .with_app_id("planet-animation")
