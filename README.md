@@ -65,7 +65,8 @@ Program jest pojedynczym plikiem wykonywalnym — nie potrzebuje żadnych dodatk
 
 ### Linux
 
-Wersja linuksowa korzysta z Waylanda.
+Wersja linuksowa działa zarówno w sesji Wayland, jak i X11 (wybiera ją automatycznie).
+Wymaga glibc 2.35 lub nowszej (np. Ubuntu 22.04+, Debian 12+).
 
 ### Windows (kompilacja skrośna z Linuksa)
 
