@@ -59,6 +59,11 @@ pokazuje profil od promienia wewnętrznego do zewnętrznego dysku.
   Po odznaczeniu „gładki” punkt staje się **narożny** (■) i jego uchwyty można ustawiać niezależnie.
   Skrajne punkty przesuwają się tylko w pionie.
 
+Pole **„skala log r”** przełącza oś promienia na logarytmiczną — wygodną, gdy dysk sięga
+od ułamka AU do dziesiątek AU. W tej skali leży też krzywa Béziera (jej punkty zachowują przy
+przełączaniu swoje promienie) i w tej skali dobierane są promienie przy rozsiewaniu, więc
+szczegóły profilu blisko gwiazdy nie giną.
+
 Przycisk **„✏ Edytuj jako krzywą”** zamienia profil potęgowy albo wzór na krzywą Béziera,
 którą można dalej poprawiać myszą. Zmieniony profil zaczyna działać po kliknięciu
 „🎲 Rozsiej ponownie” (przycisk podświetla się na pomarańczowo).

@@ -2,7 +2,8 @@
 //!
 //! Profil można podać na trzy sposoby: potęgowo (Σ ∝ r⁻ᵖ), wzorem z promieniem `r` [AU]
 //! albo krzywą Béziera rysowaną we współrzędnych znormalizowanych: x = 0 to promień wewnętrzny
-//! dysku, x = 1 zewnętrzny, y ∈ [0, 1] to gęstość względna. Liczy się tylko kształt profilu —
+//! dysku, x = 1 zewnętrzny, y ∈ [0, 1] to gęstość względna. Oś x jest liniowa albo logarytmiczna
+//! w promieniu — w tej samej skali rysuje się wykres, leży krzywa i liczy się losowanie promieni. Liczy się tylko kształt profilu —
 //! całkowitą masę gazu ustawia się osobno.
 
 /// Liczba przedziałów, na które dzielimy dysk przy losowaniu promieni i rysowaniu profilu.
@@ -35,6 +36,8 @@ pub struct DensityProfile {
     /// Wzór Σ(r), np. `r^-1 * exp(-r/20)`.
     pub formula: String,
     pub curve: BezierCurve,
+    /// Oś promienia logarytmiczna zamiast liniowej.
+    pub log_radius: bool,
 }
 
 impl Default for DensityProfile {
@@ -44,14 +47,27 @@ impl Default for DensityProfile {
             exponent: 1.0,
             formula: "r^-1 * exp(-(r/20)^2)".into(),
             curve: BezierCurve::default(),
+            log_radius: false,
         }
     }
 }
 
 impl DensityProfile {
-    /// Gęstość w `TABLE_SIZE + 1` równo rozłożonych promieniach od `lo` do `hi` (wartości ≥ 0).
+    /// Przełącza skalę osi promienia. Punkty krzywej Béziera zachowują swoje promienie i gęstości.
+    pub fn set_log_radius(&mut self, log: bool, lo: f64, hi: f64) {
+        if log == self.log_radius {
+            return;
+        }
+        let (old, new) = (RadiusAxis::new(self.log_radius, lo, hi), RadiusAxis::new(log, lo, hi));
+        self.curve.remap_x(|x| new.x(old.radius(x)));
+        self.log_radius = log;
+    }
+
+    /// Gęstość w `TABLE_SIZE + 1` promieniach rozłożonych równo na osi wykresu, od `lo` do `hi`
+    /// (wartości ≥ 0).
     pub fn table(&self, lo: f64, hi: f64) -> Result<Vec<f64>, String> {
-        let r_at = |k: usize| lo + (hi - lo) * k as f64 / TABLE_SIZE as f64;
+        let axis = RadiusAxis::new(self.log_radius, lo, hi);
+        let r_at = |k: usize| axis.radius(k as f64 / TABLE_SIZE as f64);
         let values: Vec<f64> = match self.kind {
             ProfileKind::PowerLaw => (0..=TABLE_SIZE).map(|k| r_at(k).powf(-self.exponent)).collect(),
             ProfileKind::Formula => {
@@ -68,21 +84,23 @@ impl DensityProfile {
     }
 
     /// Losowanie promieni cząsteczek zgodnie z profilem: masa pierścienia ∝ Σ(r)·r·dr.
+    /// Siatka promieni jest ta sama co w `table`, więc w skali logarytmicznej gęstsza przy gwieździe.
     pub fn radius_sampler(&self, lo: f64, hi: f64) -> Result<RadiusSampler, String> {
         let sigma = self.table(lo, hi)?;
-        let dr = (hi - lo) / TABLE_SIZE as f64;
+        let axis = RadiusAxis::new(self.log_radius, lo, hi);
+        let radii: Vec<f64> = (0..=TABLE_SIZE).map(|k| axis.radius(k as f64 / TABLE_SIZE as f64)).collect();
         let mut cumulative = Vec::with_capacity(TABLE_SIZE + 1);
         let mut total = 0.0;
         cumulative.push(0.0);
         for k in 0..TABLE_SIZE {
-            let (r0, r1) = (lo + dr * k as f64, lo + dr * (k + 1) as f64);
-            total += 0.5 * (sigma[k] * r0 + sigma[k + 1] * r1) * dr;
+            let (r0, r1) = (radii[k], radii[k + 1]);
+            total += 0.5 * (sigma[k] * r0 + sigma[k + 1] * r1) * (r1 - r0);
             cumulative.push(total);
         }
         if total <= 0.0 {
             return Err("Gęstość wynosi zero w całym dysku".into());
         }
-        Ok(RadiusSampler { lo, dr, cumulative })
+        Ok(RadiusSampler { radii, cumulative })
     }
 
     /// Zamienia bieżący profil na krzywą Béziera o `points` punktach, gotową do ręcznej edycji.
@@ -102,10 +120,43 @@ impl DensityProfile {
     }
 }
 
+/// Oś promienia wykresu: x ∈ [0, 1] odpowiada promieniom od `lo` do `hi`, liniowo albo logarytmicznie.
+#[derive(Clone, Copy, Debug)]
+pub struct RadiusAxis {
+    log: bool,
+    lo: f64,
+    hi: f64,
+}
+
+impl RadiusAxis {
+    pub fn new(log: bool, lo: f64, hi: f64) -> Self {
+        // Logarytm wymaga dodatnich promieni; dla zdegenerowanego dysku zostaje skala liniowa.
+        Self { log: log && lo > 0.0 && hi > lo, lo, hi }
+    }
+
+    /// Czy oś jest logarytmiczna (dla zdegenerowanego dysku zawsze zostaje liniowa).
+    pub fn is_log(self) -> bool {
+        self.log
+    }
+
+    pub fn radius(self, x: f64) -> f64 {
+        if self.log { self.lo * (self.hi / self.lo).powf(x) } else { self.lo + (self.hi - self.lo) * x }
+    }
+
+    pub fn x(self, r: f64) -> f64 {
+        if self.log {
+            (r / self.lo).ln() / (self.hi / self.lo).ln()
+        } else if self.hi > self.lo {
+            (r - self.lo) / (self.hi - self.lo)
+        } else {
+            0.0
+        }
+    }
+}
+
 /// Odwrotna dystrybuanta rozkładu promieni.
 pub struct RadiusSampler {
-    lo: f64,
-    dr: f64,
+    radii: Vec<f64>,
     cumulative: Vec<f64>,
 }
 
@@ -116,7 +167,7 @@ impl RadiusSampler {
         let k = self.cumulative.partition_point(|&c| c <= target).clamp(1, self.cumulative.len() - 1) - 1;
         let (c0, c1) = (self.cumulative[k], self.cumulative[k + 1]);
         let frac = if c1 > c0 { (target - c0) / (c1 - c0) } else { 0.5 };
-        self.lo + self.dr * (k as f64 + frac)
+        self.radii[k] + (self.radii[k + 1] - self.radii[k]) * frac
     }
 }
 
@@ -275,6 +326,28 @@ impl BezierCurve {
         self.clamp_handles(i - 1);
         self.clamp_handles(i);
         true
+    }
+
+    /// Przenosi krzywą na inną oś x (`f` rosnąca, f(0) = 0, f(1) = 1): punkty trafiają w nowe
+    /// położenia, a uchwyty rozciągają się w poziomie tak jak oś w pobliżu punktu.
+    pub fn remap_x(&mut self, f: impl Fn(f64) -> f64) {
+        const H: f64 = 1e-4;
+        let last = self.anchors.len() - 1;
+        for (i, a) in self.anchors.iter_mut().enumerate() {
+            let x = a.pos.x;
+            let (x0, x1) = ((x - H).max(0.0), (x + H).min(1.0));
+            let stretch = (f(x1) - f(x0)) / (x1 - x0);
+            a.pos.x = match i {
+                0 => 0.0,
+                _ if i == last => 1.0,
+                _ => f(x),
+            };
+            a.left.x *= stretch;
+            a.right.x *= stretch;
+        }
+        for i in 0..=last {
+            self.clamp_handles(i);
+        }
     }
 
     /// Ogranicza uchwyty punktu `i`: uchwyty skierowane do środka odcinka, sięgające najwyżej
@@ -648,6 +721,48 @@ mod tests {
         assert!((mean(&ring) - 2.5).abs() < 0.01);
         let empty = DensityProfile { kind: ProfileKind::Formula, formula: "0 * r".into(), ..Default::default() };
         assert!(empty.radius_sampler(1.0, 3.0).is_err());
+    }
+
+    #[test]
+    fn log_scale_samples_steep_profiles_accurately() {
+        // Σ ∝ r⁻²: masa pierścienia ∝ dr/r, czyli rozkład równomierny w ln r — mediana to √(1·100) = 10.
+        let median = |log_radius| {
+            let p = DensityProfile { exponent: 2.0, log_radius, ..Default::default() };
+            p.radius_sampler(1.0, 100.0).unwrap().radius(0.5)
+        };
+        assert!((median(true) - 10.0).abs() < 1e-3, "{}", median(true));
+        assert!((median(false) - 10.0).abs() < 0.2, "{}", median(false));
+    }
+
+    #[test]
+    fn switching_scale_keeps_curve_points_at_their_radii() {
+        let (lo, hi) = (0.2, 40.0);
+        let mut p = DensityProfile { kind: ProfileKind::Bezier, ..Default::default() };
+        p.curve.insert(Point::new(0.1, 0.6));
+        let before = p.curve.clone();
+        let radii = |p: &DensityProfile| {
+            let axis = RadiusAxis::new(p.log_radius, lo, hi);
+            p.curve.anchors.iter().map(|a| axis.radius(a.pos.x)).collect::<Vec<_>>()
+        };
+        let r0 = radii(&p);
+
+        p.set_log_radius(true, lo, hi);
+        assert!(p.log_radius);
+        for (a, b) in radii(&p).iter().zip(&r0) {
+            assert!((a / b - 1.0).abs() < 1e-9, "{a} ≠ {b}");
+        }
+        for (a, b) in p.curve.anchors.iter().zip(&before.anchors) {
+            assert_eq!(a.pos.y, b.pos.y);
+        }
+        // Krzywa wciąż jest funkcją promienia.
+        for seg in 0..p.curve.anchors.len() - 1 {
+            let c = p.curve.segment(seg);
+            assert!(c[0].x <= c[1].x && c[1].x <= c[2].x && c[2].x <= c[3].x, "odcinek {seg}: {c:?}");
+        }
+        p.set_log_radius(false, lo, hi);
+        for (a, b) in radii(&p).iter().zip(&r0) {
+            assert!((a / b - 1.0).abs() < 1e-9);
+        }
     }
 
     #[test]

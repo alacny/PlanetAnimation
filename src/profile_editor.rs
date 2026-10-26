@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Shape, Stroke, pos2, vec2};
 
-use crate::profile::{BezierCurve, DensityProfile, Point, ProfileKind, Side, TABLE_SIZE, function_names};
+use crate::profile::{BezierCurve, DensityProfile, Point, ProfileKind, RadiusAxis, Side, TABLE_SIZE, function_names};
 
 /// Odległość [px], z jakiej można chwycić punkt lub uchwyt.
 const HIT_RADIUS: f32 = 9.0;
@@ -45,6 +45,14 @@ impl ProfileEditor {
                     ui.selectable_value(&mut profile.kind, kind, kind.label());
                 }
             });
+            let mut log = profile.log_radius;
+            if ui
+                .checkbox(&mut log, "skala log r")
+                .on_hover_text("Logarytmiczna oś promienia — wygodna, gdy dysk sięga od ułamka AU do dziesiątek AU")
+                .changed()
+            {
+                profile.set_log_radius(log, lo, hi);
+            }
         });
         match profile.kind {
             ProfileKind::PowerLaw => {
@@ -79,7 +87,8 @@ impl ProfileEditor {
         }
 
         if profile.kind == ProfileKind::Bezier {
-            self.curve_controls(ui, &mut profile.curve, (lo, hi));
+            let axis = RadiusAxis::new(profile.log_radius, lo, hi);
+            self.curve_controls(ui, &mut profile.curve, axis);
         } else if table.is_ok()
             && ui
                 .button("✏ Edytuj jako krzywą")
@@ -107,20 +116,32 @@ impl ProfileEditor {
             Point::new(((s.x - plot.left()) / plot.width()) as f64, ((plot.bottom() - s.y) / plot.height()) as f64)
         };
 
-        // Tło, siatka i opisy osi.
+        // Tło, siatka i opisy osi: krańce dysku oraz okrągłe promienie pomiędzy nimi.
         let visuals = ui.visuals();
         painter.rect_filled(rect, 4.0, visuals.extreme_bg_color);
         let grid = Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.25));
         for q in 0..=4 {
-            let f = q as f32 / 4.0;
-            painter.hline(plot.x_range(), plot.bottom() - f * plot.height(), grid);
-            painter.vline(plot.left() + f * plot.width(), plot.y_range(), grid);
+            painter.hline(plot.x_range(), plot.bottom() - q as f32 / 4.0 * plot.height(), grid);
         }
         let font = FontId::proportional(11.0);
         let weak = visuals.weak_text_color();
-        painter.text(pos2(plot.left(), rect.bottom() - 3.0), Align2::LEFT_BOTTOM, format!("{lo:.2} AU"), font.clone(), weak);
-        painter.text(pos2(plot.right(), rect.bottom() - 3.0), Align2::RIGHT_BOTTOM, format!("{hi:.2} AU"), font.clone(), weak);
-        painter.text(pos2(plot.center().x, rect.bottom() - 3.0), Align2::CENTER_BOTTOM, "r", font.clone(), weak);
+        let label_y = rect.bottom() - 3.0;
+        let axis = RadiusAxis::new(profile.log_radius, lo, hi);
+        for edge in [plot.left(), plot.right()] {
+            painter.vline(edge, plot.y_range(), grid);
+        }
+        for r in radius_ticks(axis, lo, hi) {
+            let x = plot.left() + axis.x(r) as f32 * plot.width();
+            painter.vline(x, plot.y_range(), grid);
+            // Podpis tylko tam, gdzie nie zachodzi na podpisy krańców.
+            if x - plot.left() > 34.0 && plot.right() - x > 34.0 {
+                painter.text(pos2(x, label_y), Align2::CENTER_BOTTOM, format_radius(r), font.clone(), weak);
+            }
+        }
+        painter.text(pos2(plot.left(), label_y), Align2::LEFT_BOTTOM, format!("{lo:.2}"), font.clone(), weak);
+        painter.text(pos2(plot.right(), label_y), Align2::RIGHT_BOTTOM, format!("{hi:.2}"), font.clone(), weak);
+        let r_label = if axis.is_log() { "r [AU], skala log" } else { "r [AU]" };
+        painter.text(pos2(plot.right(), rect.top() + 3.0), Align2::RIGHT_TOP, r_label, font.clone(), weak);
         painter.text(pos2(plot.left(), rect.top() + 3.0), Align2::LEFT_TOP, "Σ (względna)", font, weak);
 
         let line = Stroke::new(2.0, Color32::from_rgb(140, 180, 255));
@@ -213,12 +234,12 @@ impl ProfileEditor {
         }
     }
 
-    fn curve_controls(&mut self, ui: &mut egui::Ui, curve: &mut BezierCurve, (lo, hi): (f64, f64)) {
+    fn curve_controls(&mut self, ui: &mut egui::Ui, curve: &mut BezierCurve, axis: RadiusAxis) {
         if let Some(i) = self.selected {
             let a = curve.anchors[i];
             let is_end = i == 0 || i + 1 == curve.anchors.len();
             ui.horizontal(|ui| {
-                ui.label(format!("Punkt {}: r = {:.3} AU, Σ = {:.2}", i + 1, lo + a.pos.x * (hi - lo), a.pos.y));
+                ui.label(format!("Punkt {}: r = {:.3} AU, Σ = {:.2}", i + 1, axis.radius(a.pos.x), a.pos.y));
                 let mut smooth = a.smooth;
                 if ui
                     .checkbox(&mut smooth, "gładki")
@@ -257,6 +278,33 @@ impl ProfileEditor {
             }
         });
     }
+}
+
+/// Okrągłe promienie wewnątrz (lo, hi) do podziałki osi: na osi logarytmicznej potęgi dziesięciu
+/// (i ich wielokrotności 2 i 5, gdy potęg jest mało), na liniowej co 1, 2 lub 5 razy potęga dziesięciu.
+fn radius_ticks(axis: RadiusAxis, lo: f64, hi: f64) -> Vec<f64> {
+    let inside = |r: &f64| *r > lo * 1.0001 && *r < hi * 0.9999;
+    if axis.is_log() {
+        let decades = (lo.log10().floor() as i32)..=(hi.log10().ceil() as i32);
+        let powers: Vec<f64> = decades.clone().map(|e| 10f64.powi(e)).filter(inside).collect();
+        if powers.len() >= 2 {
+            return powers;
+        }
+        return decades.flat_map(|e| [1.0, 2.0, 5.0].map(|m| m * 10f64.powi(e))).filter(inside).collect();
+    }
+    if hi <= lo {
+        return Vec::new();
+    }
+    let rough = (hi - lo) / 4.0;
+    let magnitude = 10f64.powf(rough.log10().floor());
+    let step = [1.0, 2.0, 5.0, 10.0].into_iter().map(|m| m * magnitude).find(|&s| s >= rough).unwrap_or(rough);
+    ((lo / step).floor() as i64 + 1..=(hi / step).ceil() as i64).map(|k| k as f64 * step).filter(inside).collect()
+}
+
+/// Promień bez zbędnych zer: 0.05, 0.25, 2, 20.
+fn format_radius(r: f64) -> String {
+    let text = format!("{r:.4}");
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
 /// Najbliższy punkt lub uchwyt w zasięgu `HIT_RADIUS` od kursora (punkty mają lekkie pierwszeństwo).
@@ -335,6 +383,18 @@ mod tests {
             }
             changed | self.button(to, PointerButton::Primary, false)
         }
+    }
+
+    #[test]
+    fn radius_axis_ticks_are_round_numbers() {
+        let ticks = |log, lo, hi| -> Vec<String> {
+            radius_ticks(RadiusAxis::new(log, lo, hi), lo, hi).into_iter().map(format_radius).collect()
+        };
+        assert_eq!(ticks(true, 0.19, 39.0), ["1", "10"]);
+        assert_eq!(ticks(true, 2.0, 30.0), ["5", "10", "20"]);
+        assert_eq!(ticks(false, 0.19, 39.0), ["10", "20", "30"]);
+        assert_eq!(ticks(false, 0.2, 1.0), ["0.4", "0.6", "0.8"]);
+        assert_eq!(ticks(false, 0.1, 0.3), ["0.15", "0.2", "0.25"]);
     }
 
     #[test]
