@@ -1,4 +1,4 @@
-symbole.ttf: podzbiór czcionki DejaVu Sans (tylko symbole astronomiczne).
+symbole.ttf: podzbiór czcionki DejaVu Sans (symbole astronomiczne i kilka znaków matematycznych).
 
 Files: *
 Copyright: Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. 

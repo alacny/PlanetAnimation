@@ -8,6 +8,8 @@ mod engine;
 mod gas;
 mod logger;
 mod physics;
+mod profile;
+mod profile_editor;
 mod render;
 mod system;
 mod vec3;

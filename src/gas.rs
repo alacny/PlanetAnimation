@@ -8,6 +8,7 @@ use std::f64::consts::TAU;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::physics::{Body, G, Simulation, kepler_to_state};
+use crate::profile::DensityProfile;
 use crate::system::{EARTH_MASS_IN_SUNS, SystemConfig};
 
 #[derive(Clone, Debug)]
@@ -24,6 +25,8 @@ pub struct GasConfig {
     pub thickness: f64,
     /// Siła oporu: 0 = tylko grawitacja, 1 = hamowanie w ciągu ~1/2π obiegu.
     pub drag: f64,
+    /// Początkowy rozkład gęstości powierzchniowej w funkcji promienia.
+    pub profile: DensityProfile,
 }
 
 impl GasConfig {
@@ -36,6 +39,7 @@ impl GasConfig {
             outer: 0.0,
             thickness: 3.0,
             drag: 1.0,
+            profile: DensityProfile::default(),
         };
         gas.fit_to(cfg);
         gas
@@ -61,23 +65,26 @@ impl GasConfig {
         (lo * 0.3, hi * 5.0)
     }
 
-    fn radii(&self) -> (f64, f64) {
+    /// Promień wewnętrzny i zewnętrzny dysku [AU], w kolejności rosnącej.
+    pub fn radii(&self) -> (f64, f64) {
         (self.inner.min(self.outer), self.inner.max(self.outer))
     }
 
-    /// Losuje cząsteczki na orbitach prawie kołowych wokół gwiazdy (gęstość powierzchniowa ∝ 1/r).
-    pub fn scatter(&self, sim: &Simulation) -> Vec<Body> {
+    /// Losuje cząsteczki na orbitach prawie kołowych wokół gwiazdy, z gęstością powierzchniową
+    /// zgodną z `profile`. Błąd, gdy profilu nie da się policzyć (np. błędny wzór).
+    pub fn scatter(&self, sim: &Simulation) -> Result<Vec<Body>, String> {
         let mut rng = Rng::from_time();
         let star = &sim.bodies[0];
         let mu = G * star.mass;
         let mass = self.particle_mass(self.count);
         let (lo, hi) = self.radii();
+        let radius = self.profile.radius_sampler(lo, hi)?;
         let max_inc = self.thickness.to_radians();
-        (0..self.count)
+        Ok((0..self.count)
             .map(|_| {
                 let (pos, vel) = kepler_to_state(
                     mu,
-                    lo + (hi - lo) * rng.next(),
+                    radius.radius(rng.next()),
                     0.02 * rng.next(),
                     (rng.next() * 2.0 - 1.0) * max_inc,
                     TAU * rng.next(),
@@ -86,7 +93,7 @@ impl GasConfig {
                 );
                 Body::new(star.pos + pos, star.vel + vel, mass)
             })
-            .collect()
+            .collect())
     }
 }
 
@@ -121,7 +128,7 @@ mod tests {
             gas.count = 200;
             gas.total_mass_earth = 1000.0;
             let mut sim = Simulation::new(&cfg);
-            sim.set_particles(gas.scatter(&sim), gas.removal_bounds(), gas.drag);
+            sim.set_particles(gas.scatter(&sim).unwrap(), gas.removal_bounds(), gas.drag);
             sim.advance(cfg.speed * 10.0, 2_000_000);
             assert!(
                 sim.bodies.iter().chain(&sim.particles).all(|b| b.pos.length().is_finite()),

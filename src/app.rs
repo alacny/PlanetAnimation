@@ -9,6 +9,7 @@ use crate::engine::{Engine, Shared};
 use crate::gas::GasConfig;
 use crate::logger::ElementLogger;
 use crate::physics::{Simulation, TRAIL_SAMPLES_PER_ORBIT};
+use crate::profile_editor::ProfileEditor;
 use crate::render::{self, BodyStyle, Camera, Scene, SphereMesh, ViewOptions};
 use crate::system::{EARTH_MASS_IN_SUNS, PlanetConfig, Preset, SystemConfig, palette_color};
 use crate::video::Recorder;
@@ -99,6 +100,9 @@ pub struct PlanetApp {
     gas: GasConfig,
     /// Parametry rozkładu gazu zmieniono — zaczną działać po ponownym rozsianiu.
     gas_dirty: bool,
+    /// Błąd rozsiewania gazu (np. błędny wzór profilu gęstości).
+    gas_error: Option<String>,
+    profile_editor: ProfileEditor,
     /// Liczba zapisanych pomiarów i pełna ścieżka pliku, gdy zapis trwa (kopia z wątku fizyki).
     log_status: Option<(usize, String)>,
     log_path: String,
@@ -151,6 +155,8 @@ impl PlanetApp {
             viewport_rect: egui::Rect::NOTHING,
             gas: GasConfig::for_system(&config),
             gas_dirty: false,
+            gas_error: None,
+            profile_editor: ProfileEditor::default(),
             log_status: None,
             log_path: "elementy_orbitalne.txt".to_owned(),
             log_interval: 0.1,
@@ -173,8 +179,11 @@ impl PlanetApp {
     fn restart(&mut self, reset_camera: bool) {
         let mut sim = Simulation::new(&self.config);
         sim.trail_capacity = self.trail_capacity();
+        self.gas_error = None;
         if self.gas.enabled {
-            sim.set_particles(self.gas.scatter(&sim), self.gas.removal_bounds(), self.gas.drag);
+            let particles = self.gas.scatter(&sim);
+            self.gas_error = particles.as_ref().err().cloned();
+            sim.set_particles(particles.unwrap_or_default(), self.gas.removal_bounds(), self.gas.drag);
         }
         self.orbits_dirty = false;
         self.gas_dirty = false;
@@ -200,7 +209,15 @@ impl PlanetApp {
     /// Rozsiewa cząsteczki od nowa (albo je usuwa, gdy gaz jest wyłączony).
     fn scatter_gas(&mut self) {
         let mut shared = self.engine.lock();
-        let particles = if self.gas.enabled { self.gas.scatter(&shared.sim) } else { Vec::new() };
+        let particles = if self.gas.enabled { self.gas.scatter(&shared.sim) } else { Ok(Vec::new()) };
+        let particles = match particles {
+            Ok(particles) => particles,
+            Err(err) => {
+                self.gas_error = Some(err);
+                return;
+            }
+        };
+        self.gas_error = None;
         shared.sim.set_particles(particles, self.gas.removal_bounds(), self.gas.drag);
         self.sim.clone_from(&shared.sim);
         self.gas_dirty = false;
@@ -239,7 +256,7 @@ impl PlanetApp {
     }
 
     fn controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🪐 Układ planetarny");
+        ui.heading("☉ Układ planetarny");
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
@@ -585,6 +602,11 @@ impl PlanetApp {
         if layout_before != (g.count, g.inner, g.outer, g.thickness) {
             self.gas_dirty = true;
         }
+        ui.add_space(4.0);
+        let radii = self.gas.radii();
+        if self.profile_editor.show(ui, &mut self.gas.profile, radii) {
+            self.gas_dirty = true;
+        }
         if coupling_changed {
             let mut shared = self.engine.lock();
             let n = shared.sim.particles.len() + shared.sim.particles_lost;
@@ -601,6 +623,9 @@ impl PlanetApp {
             ui.label(format!("{} cząsteczek (utracone: {})", self.sim.particles.len(), self.sim.particles_lost))
                 .on_hover_text("Cząsteczki pochłonięte przez gwiazdę lub wyrzucone z układu są usuwane");
         });
+        if let Some(err) = &self.gas_error {
+            ui.colored_label(Color32::from_rgb(230, 110, 90), format!("Nie rozsiano gazu: {err}"));
+        }
     }
 
     fn log_controls(&mut self, ui: &mut egui::Ui) {

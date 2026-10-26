@@ -12,7 +12,8 @@ Animacja 3D układu planetarnego z symulacją grawitacji N ciał, napisana w Rus
   (a, e, i, Ω, ω, ν), dodawaniem i usuwaniem planet.
 - **Gaz** (opcjonalnie) — do 1 000 000 losowo rozsianych cząsteczek w dysku wokół gwiazdy.
   Cząsteczki czują grawitację gwiazdy i planet, przyciągają planety i hamują je jak gaz
-  w obrębie sfery Hilla.
+  w obrębie sfery Hilla. Początkowy profil gęstości dysku Σ(r) można ustawić potęgowo, wzorem
+  albo narysować krzywą Béziera (patrz [Profil gęstości dysku](#profil-gęstości-dysku)).
 - **Zapis elementów orbitalnych** (opcjonalnie) — oskulacyjne elementy wszystkich planet
   zapisywane co zadany czas do pliku tekstowego (kolumny rozdzielone tabulatorem).
 - **Nagrywanie filmu** — zapis animacji do pliku WebM z otwartym kodekiem AV1
@@ -31,6 +32,36 @@ Animacja 3D układu planetarnego z symulacją grawitacji N ciał, napisana w Rus
 | Przybliżenie / oddalenie | kółko myszy |
 | Śledzenie ciała | kliknij planetę lub gwiazdę |
 | Pauza / wznowienie | spacja |
+
+## Profil gęstości dysku
+
+W sekcji „Gaz” wybiera się, jak gęstość powierzchniowa dysku Σ zależy od odległości od gwiazdy r.
+Liczy się tylko kształt profilu — całkowitą masę gazu ustawia się osobno. Wykres pod listą
+pokazuje profil od promienia wewnętrznego do zewnętrznego dysku.
+
+- **Potęgowy Σ ∝ r^-p** — p = 1 rozkłada cząsteczki równomiernie w promieniu (domyślnie),
+  p = 1,5 odpowiada modelowi „dysku minimalnej masy” (MMSN).
+- **Wzór Σ(r)** — dowolne wyrażenie ze zmienną `r` [AU], np. `r^-1 * exp(-(r/20)^2)`
+  albo pierścień `exp(-((r-5)/1)^2)`. Dostępne są działania `+ - * / ^`, nawiasy, stałe `pi`, `e`
+  i funkcje `exp`, `ln`, `log`, `sqrt`, `abs`, `sin`, `cos`, `tanh`. Liczby można pisać z kropką
+  albo przecinkiem.
+- **Krzywa Béziera** — profil rysowany myszą na wykresie:
+
+  | Akcja | Sposób |
+  |---|---|
+  | Przesunięcie punktu (●) | przeciągnij punkt |
+  | Zmiana kształtu krzywej | przeciągnij uchwyt (○) |
+  | Nowy punkt | dwuklik na wykresie albo przycisk „➕ Dodaj punkt” |
+  | Usunięcie punktu | prawy klik na punkcie albo 🗑 przy zaznaczonym punkcie |
+  | Wygładzenie | „〰 Wygładź” — automatyczne uchwyty we wszystkich punktach |
+
+  Punkt **gładki** (●) ma uchwyty na jednej prostej, więc krzywa nie ma w nim załamania.
+  Po odznaczeniu „gładki” punkt staje się **narożny** (■) i jego uchwyty można ustawiać niezależnie.
+  Skrajne punkty przesuwają się tylko w pionie.
+
+Przycisk **„✏ Edytuj jako krzywą”** zamienia profil potęgowy albo wzór na krzywą Béziera,
+którą można dalej poprawiać myszą. Zmieniony profil zaczyna działać po kliknięciu
+„🎲 Rozsiej ponownie” (przycisk podświetla się na pomarańczowo).
 
 ## Jednostki
 
@@ -97,6 +128,8 @@ cargo test --release
 | `src/physics.rs` | symulacja N ciał i gazu |
 | `src/engine.rs` | wątek fizyki |
 | `src/gas.rs` | rozsiewanie cząsteczek gazu |
+| `src/profile.rs` | profil gęstości dysku: wzory, krzywe Béziera, losowanie promieni |
+| `src/profile_editor.rs` | edytor profilu gęstości z przeciąganymi punktami i uchwytami |
 | `src/logger.rs` | zapis elementów orbitalnych |
 | `src/render.rs` | rysowanie sceny 3D |
 | `src/system.rs` | gotowe układy planetarne |
@@ -115,5 +148,5 @@ Program jest udostępniony na licencji MIT — pełny tekst w pliku [`LICENSE`](
 
 ### Licencje zewnętrzne
 
-`assets/symbole.ttf` to podzbiór czcionki DejaVu Sans (symbole astronomiczne ☉ ⊕ ♃ …),
+`assets/symbole.ttf` to podzbiór czcionki DejaVu Sans (symbole astronomiczne ☉ ⊕ ♃ … i znaki ∝ ●),
 na licencji Bitstream Vera — pełny tekst w `assets/LICENSE-DejaVu.txt`.
