@@ -3,7 +3,9 @@
 
 use eframe::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Shape, Stroke, pos2, vec2};
 
-use crate::profile::{BezierCurve, DensityProfile, Point, ProfileKind, RadiusAxis, Side, TABLE_SIZE, function_names};
+use crate::profile::{
+    BezierCurve, DensityProfile, Point, ProfileKind, RadiusAxis, Side, SigmaAxis, TABLE_SIZE, function_names,
+};
 
 /// Odległość [px], z jakiej można chwycić punkt lub uchwyt.
 const HIT_RADIUS: f32 = 9.0;
@@ -45,13 +47,31 @@ impl ProfileEditor {
                     ui.selectable_value(&mut profile.kind, kind, kind.label());
                 }
             });
+        });
+        ui.horizontal(|ui| {
+            ui.label("Skala osi");
             let mut log = profile.log_radius;
             if ui
-                .checkbox(&mut log, "skala log r")
+                .checkbox(&mut log, "log r")
                 .on_hover_text("Logarytmiczna oś promienia — wygodna, gdy dysk sięga od ułamka AU do dziesiątek AU")
                 .changed()
             {
                 profile.set_log_radius(log, lo, hi);
+            }
+            let (mut log, mut decades) = (profile.log_sigma, profile.sigma_decades);
+            let mut changed = ui
+                .checkbox(&mut log, "log Σ")
+                .on_hover_text("Logarytmiczna oś gęstości — pokazuje profile zmieniające się o rzędy wielkości")
+                .changed();
+            if log {
+                changed |= ui
+                    .add(egui::DragValue::new(&mut decades).range(SigmaAxis::DECADES).speed(0.05).max_decimals(1))
+                    .on_hover_text("Zakres osi gęstości w dekadach: od 10^-zakres do 1")
+                    .changed();
+                ui.label("dekad");
+            }
+            if changed {
+                profile.set_sigma_scale(log, decades);
             }
         });
         match profile.kind {
@@ -87,8 +107,8 @@ impl ProfileEditor {
         }
 
         if profile.kind == ProfileKind::Bezier {
-            let axis = RadiusAxis::new(profile.log_radius, lo, hi);
-            self.curve_controls(ui, &mut profile.curve, axis);
+            let axes = (RadiusAxis::new(profile.log_radius, lo, hi), profile.sigma_axis());
+            self.curve_controls(ui, &mut profile.curve, axes);
         } else if table.is_ok()
             && ui
                 .button("✏ Edytuj jako krzywą")
@@ -120,11 +140,24 @@ impl ProfileEditor {
         let visuals = ui.visuals();
         painter.rect_filled(rect, 4.0, visuals.extreme_bg_color);
         let grid = Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.25));
-        for q in 0..=4 {
-            painter.hline(plot.x_range(), plot.bottom() - q as f32 / 4.0 * plot.height(), grid);
-        }
         let font = FontId::proportional(11.0);
         let weak = visuals.weak_text_color();
+        let sigma = profile.sigma_axis();
+        if sigma.is_log() {
+            // Linia i podpis co dekadę gęstości.
+            for k in 0..=sigma.decades().floor() as i32 {
+                let y = plot.bottom() - sigma.y(10f64.powi(-k)) as f32 * plot.height();
+                painter.hline(plot.x_range(), y, grid);
+                if k > 0 {
+                    painter.text(pos2(plot.left() + 2.0, y), Align2::LEFT_BOTTOM, format_sigma(10f64.powi(-k)), font.clone(), weak);
+                }
+            }
+            painter.hline(plot.x_range(), plot.bottom(), grid);
+        } else {
+            for q in 0..=4 {
+                painter.hline(plot.x_range(), plot.bottom() - q as f32 / 4.0 * plot.height(), grid);
+            }
+        }
         let label_y = rect.bottom() - 3.0;
         let axis = RadiusAxis::new(profile.log_radius, lo, hi);
         for edge in [plot.left(), plot.right()] {
@@ -142,7 +175,8 @@ impl ProfileEditor {
         painter.text(pos2(plot.right(), label_y), Align2::RIGHT_BOTTOM, format!("{hi:.2}"), font.clone(), weak);
         let r_label = if axis.is_log() { "r [AU], skala log" } else { "r [AU]" };
         painter.text(pos2(plot.right(), rect.top() + 3.0), Align2::RIGHT_TOP, r_label, font.clone(), weak);
-        painter.text(pos2(plot.left(), rect.top() + 3.0), Align2::LEFT_TOP, "Σ (względna)", font, weak);
+        let sigma_label = if sigma.is_log() { "Σ (względna), skala log" } else { "Σ (względna)" };
+        painter.text(pos2(plot.left(), rect.top() + 3.0), Align2::LEFT_TOP, sigma_label, font, weak);
 
         let line = Stroke::new(2.0, Color32::from_rgb(140, 180, 255));
         if !editable {
@@ -151,7 +185,7 @@ impl ProfileEditor {
                 let pts = table
                     .iter()
                     .enumerate()
-                    .map(|(k, &v)| to_screen(Point::new(k as f64 / TABLE_SIZE as f64, v / max)))
+                    .map(|(k, &v)| to_screen(Point::new(k as f64 / TABLE_SIZE as f64, sigma.y(v / max))))
                     .collect();
                 painter.add(Shape::line(pts, line));
             }
@@ -234,12 +268,13 @@ impl ProfileEditor {
         }
     }
 
-    fn curve_controls(&mut self, ui: &mut egui::Ui, curve: &mut BezierCurve, axis: RadiusAxis) {
+    fn curve_controls(&mut self, ui: &mut egui::Ui, curve: &mut BezierCurve, (radius, sigma): (RadiusAxis, SigmaAxis)) {
         if let Some(i) = self.selected {
             let a = curve.anchors[i];
             let is_end = i == 0 || i + 1 == curve.anchors.len();
             ui.horizontal(|ui| {
-                ui.label(format!("Punkt {}: r = {:.3} AU, Σ = {:.2}", i + 1, axis.radius(a.pos.x), a.pos.y));
+                let (r, s) = (radius.radius(a.pos.x), format_sigma(sigma.sigma(a.pos.y)));
+                ui.label(format!("Punkt {}: r = {r:.3} AU, Σ = {s}", i + 1));
                 let mut smooth = a.smooth;
                 if ui
                     .checkbox(&mut smooth, "gładki")
@@ -305,6 +340,11 @@ fn radius_ticks(axis: RadiusAxis, lo: f64, hi: f64) -> Vec<f64> {
 fn format_radius(r: f64) -> String {
     let text = format!("{r:.4}");
     text.trim_end_matches('0').trim_end_matches('.').to_owned()
+}
+
+/// Gęstość względna: zwykły zapis dla wartości od 0,01, wykładniczy dla mniejszych.
+fn format_sigma(sigma: f64) -> String {
+    if sigma >= 0.01 || sigma == 0.0 { format_radius(sigma) } else { format!("{sigma:.0e}") }
 }
 
 /// Najbliższy punkt lub uchwyt w zasięgu `HIT_RADIUS` od kursora (punkty mają lekkie pierwszeństwo).
@@ -395,6 +435,7 @@ mod tests {
         assert_eq!(ticks(false, 0.19, 39.0), ["10", "20", "30"]);
         assert_eq!(ticks(false, 0.2, 1.0), ["0.4", "0.6", "0.8"]);
         assert_eq!(ticks(false, 0.1, 0.3), ["0.15", "0.2", "0.25"]);
+        assert_eq!([1.0, 0.1, 0.01, 0.001, 2e-5].map(format_sigma), ["1", "0.1", "0.01", "1e-3", "2e-5"]);
     }
 
     #[test]

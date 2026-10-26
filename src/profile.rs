@@ -3,7 +3,8 @@
 //! Profil można podać na trzy sposoby: potęgowo (Σ ∝ r⁻ᵖ), wzorem z promieniem `r` [AU]
 //! albo krzywą Béziera rysowaną we współrzędnych znormalizowanych: x = 0 to promień wewnętrzny
 //! dysku, x = 1 zewnętrzny, y ∈ [0, 1] to gęstość względna. Oś x jest liniowa albo logarytmiczna
-//! w promieniu — w tej samej skali rysuje się wykres, leży krzywa i liczy się losowanie promieni. Liczy się tylko kształt profilu —
+//! w promieniu — w tej samej skali rysuje się wykres, leży krzywa i liczy się losowanie promieni.
+//! Oś y też może być logarytmiczna: obejmuje wtedy zadaną liczbę dekad gęstości poniżej 1. Liczy się tylko kształt profilu —
 //! całkowitą masę gazu ustawia się osobno.
 
 /// Liczba przedziałów, na które dzielimy dysk przy losowaniu promieni i rysowaniu profilu.
@@ -38,6 +39,10 @@ pub struct DensityProfile {
     pub curve: BezierCurve,
     /// Oś promienia logarytmiczna zamiast liniowej.
     pub log_radius: bool,
+    /// Oś gęstości logarytmiczna zamiast liniowej.
+    pub log_sigma: bool,
+    /// Zakres logarytmicznej osi gęstości w dekadach: od 10^-dekady do 1.
+    pub sigma_decades: f64,
 }
 
 impl Default for DensityProfile {
@@ -48,6 +53,8 @@ impl Default for DensityProfile {
             formula: "r^-1 * exp(-(r/20)^2)".into(),
             curve: BezierCurve::default(),
             log_radius: false,
+            log_sigma: false,
+            sigma_decades: 4.0,
         }
     }
 }
@@ -63,6 +70,21 @@ impl DensityProfile {
         self.log_radius = log;
     }
 
+    pub fn sigma_axis(&self) -> SigmaAxis {
+        SigmaAxis::new(self.log_sigma, self.sigma_decades)
+    }
+
+    /// Zmienia skalę osi gęstości (liniowa albo logarytmiczna z `decades` dekadami).
+    /// Punkty krzywej Béziera zachowują swoje gęstości, o ile mieszczą się w nowym zakresie.
+    pub fn set_sigma_scale(&mut self, log: bool, decades: f64) {
+        let (old, new) = (self.sigma_axis(), SigmaAxis::new(log, decades));
+        if old != new {
+            self.curve.remap_y(|y| new.y(old.sigma(y)));
+        }
+        self.log_sigma = log;
+        self.sigma_decades = new.decades;
+    }
+
     /// Gęstość w `TABLE_SIZE + 1` promieniach rozłożonych równo na osi wykresu, od `lo` do `hi`
     /// (wartości ≥ 0).
     pub fn table(&self, lo: f64, hi: f64) -> Result<Vec<f64>, String> {
@@ -74,7 +96,10 @@ impl DensityProfile {
                 let expr = Expr::parse(&self.formula)?;
                 (0..=TABLE_SIZE).map(|k| expr.eval(r_at(k))).collect()
             }
-            ProfileKind::Bezier => (0..=TABLE_SIZE).map(|k| self.curve.eval(k as f64 / TABLE_SIZE as f64)).collect(),
+            ProfileKind::Bezier => {
+                let sigma = self.sigma_axis();
+                (0..=TABLE_SIZE).map(|k| sigma.sigma(self.curve.eval(k as f64 / TABLE_SIZE as f64))).collect()
+            }
         };
         let values: Vec<f64> = values.into_iter().map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 }).collect();
         if values.iter().all(|&v| v == 0.0) {
@@ -107,11 +132,12 @@ impl DensityProfile {
     pub fn convert_to_curve(&mut self, lo: f64, hi: f64, points: usize) -> Result<(), String> {
         let table = self.table(lo, hi)?;
         let max = table.iter().copied().fold(0.0, f64::max);
+        let sigma = self.sigma_axis();
         let anchors = (0..points)
             .map(|i| {
                 let x = i as f64 / (points - 1) as f64;
                 let k = (x * TABLE_SIZE as f64).round() as usize;
-                Point::new(x, table[k] / max)
+                Point::new(x, sigma.y(table[k] / max))
             })
             .collect::<Vec<_>>();
         self.curve = BezierCurve::through(&anchors);
@@ -151,6 +177,40 @@ impl RadiusAxis {
         } else {
             0.0
         }
+    }
+}
+
+/// Oś gęstości wykresu: y ∈ [0, 1] odpowiada gęstości względnej od 0 do 1 (liniowo)
+/// albo od 10^-dekady do 1 (logarytmicznie).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SigmaAxis {
+    log: bool,
+    decades: f64,
+}
+
+impl SigmaAxis {
+    pub const DECADES: std::ops::RangeInclusive<f64> = 1.0..=10.0;
+
+    pub fn new(log: bool, decades: f64) -> Self {
+        Self { log, decades: decades.clamp(*Self::DECADES.start(), *Self::DECADES.end()) }
+    }
+
+    pub fn is_log(self) -> bool {
+        self.log
+    }
+
+    pub fn decades(self) -> f64 {
+        self.decades
+    }
+
+    pub fn sigma(self, y: f64) -> f64 {
+        if self.log { 10f64.powf(self.decades * (y - 1.0)) } else { y }
+    }
+
+    /// Położenie gęstości `sigma` na osi; wartości spoza zakresu trafiają na jego krańce.
+    pub fn y(self, sigma: f64) -> f64 {
+        let y = if self.log { 1.0 + sigma.max(1e-300).log10() / self.decades } else { sigma };
+        y.clamp(0.0, 1.0)
     }
 }
 
@@ -347,6 +407,33 @@ impl BezierCurve {
         }
         for i in 0..=last {
             self.clamp_handles(i);
+        }
+    }
+
+    /// Przenosi krzywą na inną oś y (`f` rosnąca, o wartościach w [0, 1]). Punkty trafiają
+    /// w nowe położenia; gładkie dostają automatyczne uchwyty, bo przy nieliniowej zmianie skali
+    /// stare uchwyty mogłyby wyrzucić krzywą daleko poza wykres. Uchwyty narożnych punktów
+    /// rozciągają się w pionie tak jak oś w pobliżu punktu, najwyżej do wysokości wykresu.
+    pub fn remap_y(&mut self, f: impl Fn(f64) -> f64) {
+        const H: f64 = 1e-4;
+        for a in &mut self.anchors {
+            let y = a.pos.y;
+            let (y0, y1) = ((y - H).max(0.0), (y + H).min(1.0));
+            let stretch = (f(y1) - f(y0)) / (y1 - y0);
+            a.pos.y = f(y).clamp(0.0, 1.0);
+            for h in [&mut a.left, &mut a.right] {
+                h.y *= stretch;
+                if h.y.abs() > 1.0 {
+                    *h = h.scale(1.0 / h.y.abs());
+                }
+            }
+        }
+        for i in 0..self.anchors.len() {
+            if self.anchors[i].smooth {
+                self.auto_handles(i);
+            } else {
+                self.clamp_handles(i);
+            }
         }
     }
 
@@ -762,6 +849,45 @@ mod tests {
         p.set_log_radius(false, lo, hi);
         for (a, b) in radii(&p).iter().zip(&r0) {
             assert!((a / b - 1.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn log_sigma_scale_keeps_curve_densities() {
+        let mut p = DensityProfile { kind: ProfileKind::Bezier, ..Default::default() };
+        p.curve = BezierCurve::through(&[Point::new(0.0, 1.0), Point::new(0.4, 0.05), Point::new(1.0, 0.002)]);
+        let sigmas = |p: &DensityProfile| p.curve.anchors.iter().map(|a| p.sigma_axis().sigma(a.pos.y)).collect::<Vec<_>>();
+        let close = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(x, y)| (x / y - 1.0).abs() < 1e-9);
+        let before = sigmas(&p);
+
+        p.set_sigma_scale(true, 4.0);
+        assert!(close(&sigmas(&p), &before), "{:?} ≠ {before:?}", sigmas(&p));
+        assert!((p.curve.anchors[1].pos.y - (1.0 + 0.05f64.log10() / 4.0)).abs() < 1e-9);
+        // Zmiana zakresu dekad też nie rusza gęstości punktów, które się w nim mieszczą.
+        p.set_sigma_scale(true, 6.0);
+        assert!(close(&sigmas(&p), &before));
+        // Wartości z tabeli w punktach węzłowych to te same gęstości.
+        let table = p.table(1.0, 2.0).unwrap();
+        assert!((table[0] - 1.0).abs() < 1e-9 && (table[TABLE_SIZE] / 0.002 - 1.0).abs() < 1e-6);
+
+        p.set_sigma_scale(false, 6.0);
+        assert!(close(&sigmas(&p), &before));
+        // Za mały zakres: gęstość poniżej 10^-2 trafia na dół osi.
+        p.set_sigma_scale(true, 2.0);
+        assert_eq!(p.curve.anchors[2].pos.y, 0.0);
+    }
+
+    #[test]
+    fn power_law_becomes_straight_curve_in_log_log_scale() {
+        let (lo, hi) = (0.2, 40.0);
+        let mut p = DensityProfile { exponent: 1.5, log_radius: true, log_sigma: true, ..Default::default() };
+        p.convert_to_curve(lo, hi, 5).unwrap();
+        // W skali log-log potęga to prosta, więc krzywa przez 5 punktów oddaje ją także między nimi.
+        let table = p.table(lo, hi).unwrap();
+        let axis = RadiusAxis::new(true, lo, hi);
+        for k in (0..=TABLE_SIZE).step_by(37) {
+            let expected = (axis.radius(k as f64 / TABLE_SIZE as f64) / lo).powf(-1.5);
+            assert!((table[k] / expected - 1.0).abs() < 0.01, "k = {k}: {} ≠ {expected}", table[k]);
         }
     }
 

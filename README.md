@@ -59,10 +59,16 @@ pokazuje profil od promienia wewnętrznego do zewnętrznego dysku.
   Po odznaczeniu „gładki” punkt staje się **narożny** (■) i jego uchwyty można ustawiać niezależnie.
   Skrajne punkty przesuwają się tylko w pionie.
 
-Pole **„skala log r”** przełącza oś promienia na logarytmiczną — wygodną, gdy dysk sięga
-od ułamka AU do dziesiątek AU. W tej skali leży też krzywa Béziera (jej punkty zachowują przy
-przełączaniu swoje promienie) i w tej skali dobierane są promienie przy rozsiewaniu, więc
-szczegóły profilu blisko gwiazdy nie giną.
+W wierszu **„Skala osi”** obie osie wykresu można przełączyć na logarytmiczne:
+
+- **log r** — oś promienia; wygodna, gdy dysk sięga od ułamka AU do dziesiątek AU. W tej skali
+  dobierane są też promienie przy rozsiewaniu, więc szczegóły profilu blisko gwiazdy nie giną.
+- **log Σ** — oś gęstości, obejmująca zadaną liczbę **dekad** (domyślnie 4, czyli od 10⁻⁴ do 1);
+  pokazuje profile zmieniające się o rzędy wielkości. Gęstości mniejsze niż dół zakresu
+  krzywa Béziera przyjmuje jako równe dolnej granicy.
+
+Krzywa Béziera leży w wybranych skalach, a przy ich przełączaniu jej punkty zachowują swoje
+promienie i gęstości. W skali log-log profil potęgowy jest prostą.
 
 Przycisk **„✏ Edytuj jako krzywą”** zamienia profil potęgowy albo wzór na krzywą Béziera,
 którą można dalej poprawiać myszą. Zmieniony profil zaczyna działać po kliknięciu
