@@ -147,6 +147,73 @@ cargo test --release
 | `src/video.rs` | koder AV1 i zapis WebM |
 | `src/vec3.rs` | wektory 3D |
 
+## Źródła
+
+Kod powstał na podstawie wiedzy modelu AI, bez sięgania do źródeł w trakcie pisania. Poniżej
+wskazano publikacje, z których pochodzą użyte dane i metody.
+
+### Dane astronomiczne
+
+- **Elementy orbit planet (J2000)** — E. M. Standish, *Keplerian Elements for Approximate Positions
+  of the Major Planets*, JPL Solar System Dynamics, tabela 1 (lata 1800–2050),
+  <https://ssd.jpl.nasa.gov/planets/approx_pos.html>. Argument perycentrum liczony jako ω = ϖ − Ω.
+- **Masy planet w masach Ziemi** — D. R. Williams, *Planetary Fact Sheet – Ratio to Earth Values*,
+  NASA NSSDCA, <https://nssdc.gsfc.nasa.gov/planetary/factsheet/planet_table_ratio.html>.
+- **Stosunki mas Ziemi, Jowisza i Słońca** — ze stosunków GM w układzie stałych IAU:
+  B. Luzum i in., *The IAU 2009 system of astronomical constants*, Celest. Mech. Dyn. Astr. 110,
+  293 (2011); IAU 2015 Resolution B3.
+- **TRAPPIST-1** (masa gwiazdy, masy i półosie planet) — E. Agol i in., *Refining the
+  Transit-timing and Photometric Analysis of TRAPPIST-1*, Planet. Sci. J. 2, 1 (2021).
+  Odkrycie układu: M. Gillon i in., Nature 533, 221 (2016); Nature 542, 456 (2017).
+  Mimośrody, nachylenia i początkowe położenia planet przyjęto umownie.
+
+### Mechanika nieba i metody numeryczne
+
+- **Elementy orbitalne ↔ wektor stanu, sfera Hilla, G = 4π² w jednostkach AU/rok/M☉** —
+  C. D. Murray, S. F. Dermott, *Solar System Dynamics*, Cambridge University Press (1999),
+  rozdz. 2–3; D. A. Vallado, *Fundamentals of Astrodynamics and Applications*, 4th ed. (2013).
+- **Całkowanie leapfrog (KDK, DKD)** — L. Verlet, Phys. Rev. 159, 98 (1967); T. Quinn i in.,
+  *Time stepping N-body simulations*, arXiv:astro-ph/9710043 (1997).
+- **Adaptacyjny krok czasowy** — P. Hut, J. Makino, S. McMillan, *Building a Better Leapfrog*,
+  ApJ 443, L93 (1995).
+- **Zmiękczenie potencjału i kryterium kroku z czasu dynamicznego** — S. J. Aarseth,
+  *Gravitational N-Body Simulations*, Cambridge University Press (2003).
+
+### Dysk gazowy
+
+- **Dysk minimalnej masy (MMSN, Σ ∝ r⁻¹·⁵)** — S. J. Weidenschilling, Astrophys. Space Sci. 51,
+  153 (1977); C. Hayashi, Prog. Theor. Phys. Suppl. 70, 35 (1981).
+- **Dyski protoplanetarne (tło)** — P. J. Armitage, *Astrophysics of Planet Formation*, 2nd ed.,
+  Cambridge University Press (2020).
+- **Opór gazu w sferze Hilla** — model uproszczony, własny; korzysta z pojęcia czasu hamowania,
+  np. S. J. Weidenschilling, MNRAS 180, 57 (1977).
+
+### Matematyka i grafika
+
+- **Losowanie metodą odwrotnej dystrybuanty** — L. Devroye, *Non-Uniform Random Variate
+  Generation*, Springer (1986).
+- **Generator xorshift64** — G. Marsaglia, *Xorshift RNGs*, J. Stat. Softw. 8(14) (2003).
+- **Krzywe Béziera** — G. Farin, *Curves and Surfaces for CAGD*, 5th ed., Morgan Kaufmann (2002).
+- **Automatyczne uchwyty (styczne Catmulla-Roma)** — E. Catmull, R. Rom, *A Class of Local
+  Interpolating Splines*, w: *Computer Aided Geometric Design*, red. R. Barnhill, R. Riesenfeld,
+  Academic Press (1974).
+- **Algorytm malarza** — M. E. Newell, R. G. Newell, T. L. Sancha, *A Solution to the Hidden
+  Surface Problem*, Proc. ACM Annual Conference (1972).
+
+### Wideo
+
+- **Konwersja RGB → YUV** — ITU-R Recommendation BT.709-6 (2015).
+- **Kodek AV1** — AOMedia, *AV1 Bitstream & Decoding Process Specification* (2019).
+- **Kontener WebM** — RFC 8794 *Extensible Binary Meta Language* (2020); RFC 9559 *Matroska Media
+  Container Format Specification* (2024); *AV1 in Matroska/WebM* (IETF CELLAR);
+  *WebM Container Guidelines*, <https://www.webmproject.org/docs/container/>.
+
+### Oprogramowanie
+
+[egui/eframe](https://github.com/emilk/egui), [rav1e](https://github.com/xiph/rav1e),
+[rayon](https://github.com/rayon-rs/rayon), [DejaVu Fonts](https://dejavu-fonts.github.io/),
+[Rust](https://www.rust-lang.org/).
+
 ## Autorstwo
 
 Cały kod tego programu napisał model AI Claude (Anthropic) w narzędziu Claude Code,
